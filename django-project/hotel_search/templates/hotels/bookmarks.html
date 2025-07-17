@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}My Bookmarks{% endblock %}
+
+{% block content %}
+<div class="bg-white p-8 rounded-lg shadow-md">
+    <h2 class="text-2xl font-bold mb-6">My Bookmarked Hotels</h2>
+    {% if bookmarks %}
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {% for bookmark in bookmarks %}
+                <div class="bg-white rounded-lg shadow-md overflow-hidden">
+                    <img src="{{ bookmark.hotel.image_url|default:'[https://placehold.co/600x400/e2e8f0/64748b?text=No+Image](https://placehold.co/600x400/e2e8f0/64748b?text=No+Image)' }}" alt="Image of {{ bookmark.hotel.name }}" class="w-full h-56 object-cover">
+                    <div class="p-6">
+                        <h2 class="text-xl font-bold text-gray-800 mb-2">{{ bookmark.hotel.name }}</h2>
+                        <p class="text-sm text-gray-500 mb-2">{{ bookmark.hotel.source }}</p>
+                        <p class="text-gray-600 mb-4">{{ bookmark.hotel.location }}</p>
+                        <div class="flex justify-between items-center">
+                            <span class="text-lg font-semibold text-blue-600">{{ bookmark.hotel.price }}</span>
+                            <span class="bg-green-500 text-white text-sm font-bold px-3 py-1 rounded-full">{{ bookmark.hotel.rating }}</span>
+                        </div>
+                         <a href="{{ bookmark.hotel.hotel_url }}" target="_blank" class="block text-center bg-gray-200 text-gray-800 mt-4 px-4 py-2 rounded-lg hover:bg-gray-300">View Deal</a>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <p class="text-gray-500">You haven't bookmarked any hotels yet.</p>
+    {% endif %}
+</div>
+{% endblock %}
+
