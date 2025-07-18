@@ -40,8 +40,8 @@ INSTALLED_APPS = [
     'hotel_search',
 ]
 
-LOGIN_REDIRECT_URL = '/search/'
-LOGOUT_REDIRECT_URL = '/login/'
+LOGIN_REDIRECT_URL = '/hotels/search/'
+LOGOUT_REDIRECT_URL = '/hotels/login/'
 FASTAPI_URL = 'http://127.0.0.1:8001'
 
 MIDDLEWARE = [

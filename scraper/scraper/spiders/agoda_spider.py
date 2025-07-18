@@ -69,10 +69,10 @@ class AgodaSpider(scrapy.Spider):
                 #     ],
                 # },
                 # callback=self.parse,  ## TODO INFO: Uncomment!
-                callback=self.parse_mock_data, ## TODO INFO: Comment!
+                callback=self.parse_with_mock_data, ## TODO INFO: Comment!
             )
 
-    def parse_mock_data(self, response):
+    def parse_with_mock_data(self, response):
         hotels = [
             {
                 'name': 'City View Hotel Roman Road',
@@ -114,64 +114,7 @@ class AgodaSpider(scrapy.Spider):
             item['hotel_url'] = hotel['hotel_url']
             
             yield item
-
-
-    def parse_old(self, response):
-        """
-        Parses the search results page.
-        """
-        self.logger.info(f"Parsing URL: {response.url}")
-        
-        hotel_cards = response.css('div.PropertyCardItem')
-
-        if not hotel_cards:
-            self.logger.warning(f"No hotel cards found on {response.url}. Selectors might be outdated or no results.")
-
-        for card in hotel_cards:
-            item = ScraperItem()
-            item['search_task_id'] = self.search_task_id
-            item['source'] = self.name
-
-            item['name'] = card.css('h3[data-cy="hotel-name"]::text').get()
-            item['location'] = card.css('span[data-cy="hotel-location"]::text').get()
-            item['price'] = card.css('span[data-cy="price-display"]::text').get()
-            item['rating'] = card.css('p[data-cy="hotel-rating"]::text').get()
-            item['image_url'] = card.css('img[data-cy="hotel-image"]::attr(src)').get()
-            
-            hotel_relative_url = card.css('a.PropertyCard__Link::attr(href)').get()
-            if hotel_relative_url:
-                item['hotel_url'] = urljoin(response.url, hotel_relative_url)
-            else:
-                item['hotel_url'] = None
-
-            yield item
-
-        next_page_link = response.css('a[data-cy="pagination-next-button"]::attr(href)').get()
-        if next_page_link:
-            next_page_url = response.urljoin(next_page_link)
-            self.logger.info(f"Following next page link: {next_page_url}")
-            yield scrapy.Request(
-                next_page_url,
-                # meta={
-                #     "playwright": True,
-                #     "playwright_page_methods": [
-                #         PageMethod("wait_for_selector", "div.PropertyCardItem"),
-                #     ],
-                # },
-                callback=self.parse,
-            )
-            # yield CrawlbaseRequest(
-            #     next_page_url,
-            #     callback=self.parse,
-            #     device='desktop',
-            #     country='US',
-            #     page_wait=1000,
-            #     ajax_wait=True,
-            #     dont_filter=True,
-            # )
-        else:
-            self.logger.info(f"No next page link found on {response.url}. Finished scraping.")
-            
+       
     def parse(self, response):
         hotels = response.css('li[data-selenium="hotel-item"]')
         LOGGER.info(f"Found {len(hotels)} hotels on page: {response.url}")

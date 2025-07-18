@@ -4,9 +4,6 @@ from urllib.parse import urlparse, parse_qs
 from loguru import logger
 
 async def get_agoda_city_id(city_name: str) -> str | None:
-    """
-    Uses Playwright to navigate Agoda, search for a city, and extract the city ID from the URL.
-    """
     logger.info(f"Attempting to get Agoda city ID for: {city_name}")
     async with async_playwright() as p:
         browser = None
@@ -23,7 +20,7 @@ async def get_agoda_city_id(city_name: str) -> str | None:
                 await page.fill("#textInput", city_name)
 
                 # Wait for the search button
-                await page.wait_for_selector("button[data-selenium='searchButton']", timeout=10000)
+                await page.wait_for_selector("button[data-selenium='searchButton']", timeout=1000)
                 
                 # Click the search button
                 await page.click("button[data-selenium='searchButton']")
@@ -34,7 +31,7 @@ async def get_agoda_city_id(city_name: str) -> str | None:
             except PlaywrightTimeoutError:
                 logger.warning("Could not find direct search input, trying alternative selectors.")
                 # Fallback 
-                await page.click("button[data-selenium='searchButton']", timeout=5000)
+                await page.click("button[data-selenium='searchButton']", timeout=1000)
                 logger.info("Clicked alternative search input.")
 
             

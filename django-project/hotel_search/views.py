@@ -20,7 +20,7 @@ def register_view(request):
             user.email = form.cleaned_data['email']
             user.save()
             login(request, user)
-            return redirect('search')
+            return redirect('search_hotels') ## url pattern name for the search view
     else:
         form = RegisterForm()
     return render(request, 'registration/register.html', {'form': form})
@@ -78,6 +78,7 @@ from celery.result import AsyncResult
 import asyncio
 from .city_id_resolver import get_agoda_city_id
 
+@login_required
 def search_hotels_view(request):
     """
     Handles the search form submission, initiates the Celery task,
@@ -91,12 +92,12 @@ def search_hotels_view(request):
         if city:
             # Resolve Agoda city ID asynchronously
             agoda_city_id = None
-            try:
-                agoda_city_id = asyncio.run(get_agoda_city_id(city))
-                if not agoda_city_id:
-                    LOGGER.warning(f"Could not resolve Agoda city ID for {city}. Proceeding without Agoda search.")
-            except Exception as e:
-                LOGGER.error(f"Error resolving Agoda city ID for {city}: {e}")
+            # try:
+            #     agoda_city_id = asyncio.run(get_agoda_city_id(city))
+            #     if not agoda_city_id:
+            #         LOGGER.warning(f"Could not resolve Agoda city ID for {city}. Proceeding without Agoda search.")
+            # except Exception as e:
+            #     LOGGER.error(f"Error resolving Agoda city ID for {city}: {e}")
 
             # Call the Celery task asynchronously, passing the resolved Agoda city ID
             task_result = run_spiders_for_query.delay(city, price=price, rating=rating, agoda_city_id=agoda_city_id)
