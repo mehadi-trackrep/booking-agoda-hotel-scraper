@@ -37,32 +37,35 @@ function startPolling(pollUrl, hotelsGrid, loadingSpinner, noResultsMessage, car
                 return response.json();
             })
             .then(data => {
-                if (data.status === 'SUCCESS') {
+                // Always update the UI with the latest data on each poll.
+                if (data.hotels && data.hotels.length > 0) {
+                    loadingIndicator.classList.add('hidden');
+                    noResultsMessage.classList.add('hidden');
+                    updateHotelsGrid(data.hotels, hotelsGrid, cardTemplate, csrfToken);
+                    hotelsGrid.classList.remove('hidden');
+                }
+
+                // Stop polling only when the task is fully complete (SUCCESS or FAILURE).
+                if (data.status === 'SUCCESS' || data.status === 'FAILURE') {
                     clearInterval(interval);
-                    loadingSpinner.classList.add('hidden');
-                    if (data.hotels && data.hotels.length > 0) {
-                        updateHotelsGrid(data.hotels, hotelsGrid, cardTemplate, csrfToken);
-                        hotelsGrid.classList.remove('hidden'); // Show the grid
-                    } else {
+                    loadingIndicator.classList.add('hidden'); // Ensure it's hidden at the end.
+
+                    // If the task finished but we have no hotels, show the "no results" message.
+                    if (data.hotels.length === 0) {
                         noResultsMessage.classList.remove('hidden');
                     }
-                    if (data.error) { // Display partial errors if any spiders failed
+
+                    // If there was an error (either from a FAILED task or a partial error on SUCCESS)
+                    if (data.error) {
                         errorMessage.classList.remove('hidden');
                         errorDetails.textContent = data.error;
                     }
-                } else if (data.status === 'PENDING' || data.status === 'STARTED') {
-                    console.log('Scraping in progress...');
-                } else if (data.status === 'FAILURE') { // Handle group task failure
-                    clearInterval(interval);
-                    loadingSpinner.classList.add('hidden');
-                    errorMessage.classList.remove('hidden');
-                    errorDetails.textContent = data.error || 'An unknown error occurred during scraping.';
                 }
             })
             .catch(error => {
                 clearInterval(interval);
                 console.error('Error polling for results:', error);
-                loadingSpinner.classList.add('hidden'); // Hide spinner
+                loadingIndicator.classList.add('hidden');
                 errorMessage.classList.remove('hidden');
                 errorDetails.textContent = `Could not fetch results: ${error.message}. Please try again later.`;
             });

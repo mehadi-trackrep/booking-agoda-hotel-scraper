@@ -10,12 +10,12 @@ class BookingSpider(scrapy.Spider):
     # Base URL for Booking.com search results
     base_search_url = 'https://www.booking.com/searchresults.html'
 
-    def __init__(self, city=None, price=None, rating=None, task_id=None, *args, **kwargs):
+    def __init__(self, city=None, price=None, rating=None, search_task_id=None, *args, **kwargs):
         super(BookingSpider, self).__init__(*args, **kwargs)
         self.city = city
         self.price = price
         self.rating = rating
-        self.task_id = task_id # Celery task ID for tracking
+        self.search_task_id = search_task_id # Celery task ID for tracking
 
         if not self.city:
             raise ValueError("City argument is required for booking_spider.")
@@ -40,7 +40,7 @@ class BookingSpider(scrapy.Spider):
             self.logger.info(f"Rating filter '{self.rating}' provided, but might require specific Booking.com URL parameter mapping.")
 
         self.start_urls = [f'{self.base_search_url}?{urlencode(params)}']
-        self.logger.info(f"Starting spider '{self.name}' for city: '{self.city}', task_id: '{self.task_id}'")
+        self.logger.info(f"Starting spider '{self.name}' for city: '{self.city}', task_id: '{self.search_task_id}'")
         self.logger.info(f"Initial URL: {self.start_urls[0]}")
 
     # Helper function for price mapping (conceptual)
@@ -75,7 +75,7 @@ class BookingSpider(scrapy.Spider):
 
         for card in hotel_cards:
             item = ScraperItem()
-            item['search_task_id'] = self.task_id # Pass the Celery task ID
+            item['search_task_id'] = self.search_task_id # Pass the Celery task ID
             item['source'] = self.name # 'booking_spider'
 
             # Extract data using CSS selectors

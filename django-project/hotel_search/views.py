@@ -54,72 +54,6 @@ from .tasks import run_spiders_for_query
 from .models import Hotel, Bookmark
 from celery.result import AsyncResult
 
-# @login_required
-# def search_view(request):
-#     if request.method == 'POST':
-#         form = HotelSearchForm(request.POST)
-#         if form.is_valid():
-#             city = form.cleaned_data['city']
-#             price_range = form.cleaned_data.get('price_range', '')
-#             star_rating = form.cleaned_data.get('star_rating', '')
-
-#             # Trigger celery task and get the group task ID
-#             task = run_spiders_for_query.delay(city, price_range, star_rating)
-            
-#             context = {
-#                 'form': form,
-#                 'task_id': task.id
-#             }
-#             return render(request, 'hotels/search.html', context)
-        
-#         if city and price and rating:
-#             # Call the Celery task asynchronously
-#             task_result = run_spiders_for_query.delay(city, price, rating)
-            
-#             # Redirect to the results page, passing the group task_id
-#             return redirect('hotel_results', task_id=task_result.id)
-#     else:
-#         form = HotelSearchForm()
-
-#     return render(request, 'hotels/search.html', {'form': form})
-
-# def poll_search_results(request, task_id):
-#     """
-#     API endpoint to be polled by JavaScript.
-#     Returns the status of the task and the results found so far.
-#     """
-#     task = AsyncResult(task_id)
-    
-#     if task.ready():
-#         # The group task is ready, which means subtasks are done.
-#         # We can now fetch all hotels related to the subtask IDs.
-#         # The result of the group task is a list of results of subtasks.
-#         subtask_ids = task.get()
-#         hotels = Hotel.objects.filter(search_task_id__in=subtask_ids).distinct()
-        
-#         # Check bookmarks for the current user
-#         bookmarked_hotel_ids = []
-#         if request.user.is_authenticated:
-#             bookmarked_hotel_ids = list(Bookmark.objects.filter(user=request.user).values_list('hotel_id', flat=True))
-
-#         return JsonResponse({
-#             'status': 'SUCCESS',
-#             'hotels': [{
-#                 'id': h.id,
-#                 'name': h.name,
-#                 'location': h.location,
-#                 'price': h.price,
-#                 'rating': h.rating,
-#                 'image_url': h.image_url,
-#                 'hotel_url': h.hotel_url,
-#                 'source': h.source,
-#                 'is_bookmarked': h.id in bookmarked_hotel_ids
-#             } for h in hotels]
-#         })
-#     else:
-#         # Task is still running, let's fetch what we have so far
-#         # This is a bit trickier with groups, we'll just report PENDING
-#         return JsonResponse({'status': 'PENDING'})
 
 # @login_required
 # def toggle_bookmark_view(request, hotel_id):
@@ -186,118 +120,60 @@ def hotel_results_view(request, task_id=None): # <--- Make task_id optional
     }
     return render(request, 'hotels/results.html', context)
 
-import logging
-# Get an instance of a logger (assuming this is defined at the top of views.py)
-logger = logging.getLogger(__name__)
-
 
 def poll_search_results(request, task_id):
     """
     API endpoint to be polled by JavaScript.
-    Returns the status of the group task and ONLY the NEW results found by this specific task.
+    Returns the task status and any results found so far, allowing for real-time updates.
     """
-    try:
-        task = AsyncResult(str(task_id)) # Ensure task_id is string
-        
-        logger.info(f"Polling for task_id: {task_id}")
-        logger.info(f"Task object type: {type(task)}")
-        logger.info(f"Task status: {task.status}") # Log current status
+    LOGGER.info(f"Polling for task_id: {task_id}")
+    task = AsyncResult(str(task_id))
 
-        data = {
-            'status': task.status,
-            'progress': 'N/A',
-            'error': None
-        }
+    # Always query for hotels found so far for this task.
+    hotels_queryset = Hotel.objects.filter(search_task_id=str(task_id)).distinct().order_by('-scraped_at')
+    
+    bookmarked_hotel_ids = []
+    if request.user.is_authenticated:
+        bookmarked_hotel_ids = list(Bookmark.objects.filter(user=request.user).values_list('hotel_id', flat=True))
 
-        if task.ready(): # Group task is ready (SUCCESS or FAILURE)
-            all_subtask_results = []
-            successful_subtask_ids = []
-            failed_subtask_errors = []
+    hotels_data = [{
+        'id': h.id, 'name': h.name, 'location': h.location, 'price': h.price,
+        'rating': h.rating, 'image_url': h.image_url, 'hotel_url': h.hotel_url,
+        'source': h.source, 'is_bookmarked': h.id in bookmarked_hotel_ids
+    } for h in hotels_queryset]
+    
+    LOGGER.info(f"Found {len(hotels_data)} hotels in DB for task {task_id}. Task status: {task.status}")
 
-            if task.children: # Check if the group task has children
-                logger.info(f"Group task {task_id} has children. Fetching individual results.")
-                for child_task_async_result in task.children:
+    error_message = None
+    # Check for failures specifically.
+    if task.status == 'FAILURE':
+        error_message = "A task failed."
+        # If there are children, try to find the specific error.
+        if task.children:
+            failed_child_errors = []
+            for child in task.children:
+                if child.failed():
+                    # The result of the failed child task contains the error info
                     try:
-                        child_result = child_task_async_result.get(timeout=1) # Get the result of each child task
+                        child_result = child.get() # this should not block if child.failed() is true
+                    except Exception as e:
+                        child_result = str(e)
 
-                        results_to_process = child_result if isinstance(child_result, list) else [child_result]
+                    # The individual_spider_task returns a dict on failure
+                    if isinstance(child_result, dict) and 'error' in child_result:
+                        failed_child_errors.append(child_result['error'])
+                    else:
+                        failed_child_errors.append(str(child_result))
+            if failed_child_errors:
+                error_message = "Some spiders failed: " + "; ".join(failed_child_errors)
+        else:
+            error_message = f"Task failed: {task.result}"
 
-                        for res_item in results_to_process:
-                            all_subtask_results.append(res_item) # Keep track of all results
-
-                            # --- DEEPER DEBUGGING HERE ---
-                            logger.info(f"Processing res_item: {res_item} (Type: {type(res_item)})")
-                            if isinstance(res_item, dict):
-                                logger.info(f"res_item is a dict. Keys: {res_item.keys()}")
-                                if 'status' in res_item:
-                                    logger.info(f"res_item has 'status' key. Value: {res_item['status']}")
-                                    if res_item['status'] == 'SUCCESS':
-                                        successful_subtask_ids.append(str(res_item['task_id']))
-                                    elif res_item['status'] == 'FAILURE':
-                                        if res_item.get('error'):
-                                            failed_subtask_errors.append(res_item.get('error'))
-                                    else:
-                                        logger.warning(f"res_item status is not SUCCESS/FAILURE: {res_item['status']} for {child_task_async_result.id}")
-                                        failed_subtask_errors.append(f"Unexpected status '{res_item['status']}' from subtask {child_task_async_result.id}")
-                                else:
-                                    logger.warning(f"res_item is a dict but missing 'status' key for {child_task_async_result.id}: {res_item}")
-                                    failed_subtask_errors.append(f"Subtask {child_task_async_result.id} result missing 'status' key.")
-                            else:
-                                logger.warning(f"Unexpected item format within child result (NOT A DICT) for {child_task_async_result.id}: {res_item}")
-                                failed_subtask_errors.append(f"Unexpected non-dict format from subtask {child_task_async_result.id}: {res_item}")
-                            # --- END DEEPER DEBUGGING ---
-
-                    except Exception as child_e:
-                        logger.exception(f"Error getting result for child task {child_task_async_result.id}")
-                        failed_subtask_errors.append(f"Error getting result from subtask {child_task_async_result.id}: {str(child_e)}")
-            else:
-                logger.warning(f"Group task {task_id} is ready but has no children. This is unexpected.")
-                if task.status == 'FAILURE':
-                    data['error'] = str(task.result)
-                else:
-                    data['error'] = "Group task completed without reporting child results."
-
-
-            logger.info(f"----> All subtask results collected: {all_subtask_results}")
-            logger.info(f"----> Successful subtask IDs: {successful_subtask_ids}")
-            
-            if successful_subtask_ids:
-                new_hotels_queryset = Hotel.objects.filter(search_task_id=str(task_id)).distinct().order_by('-created_at')
-            else:
-                new_hotels_queryset = Hotel.objects.none()
-
-            logger.info(f"===> Hotels found in DB for task_id {task_id}: {new_hotels_queryset.count()}")
-
-            bookmarked_hotel_ids = []
-            if request.user.is_authenticated:
-                bookmarked_hotel_ids = list(Bookmark.objects.filter(user=request.user).values_list('hotel_id', flat=True))
-
-            data['status'] = 'SUCCESS'
-            data['hotels'] = [{
-                'id': h.id,
-                'name': h.name,
-                'location': h.location,
-                'price': h.price,
-                'rating': h.rating,
-                'image_url': h.image_url,
-                'hotel_url': h.hotel_url,
-                'source': h.source,
-                'is_bookmarked': h.id in bookmarked_hotel_ids
-            } for h in new_hotels_queryset]
-
-            if failed_subtask_errors:
-                data['error'] = "Some spiders failed: " + "; ".join(failed_subtask_errors)
-
-        elif task.status == 'FAILURE':
-            data['error'] = str(task.result)
-        
-        return JsonResponse(data)
-    except Exception as e:
-        logger.exception(f"Unexpected error in poll_search_results for task_id: {task_id}")
-        return JsonResponse({
-            'status': 'FAILURE',
-            'error': f"An unexpected server error occurred: {str(e)}"
-        }, status=500)
+    return JsonResponse({
+        'status': task.status,
+        'hotels': hotels_data,
+        'error': error_message,
+    })
 
 
 @login_required
