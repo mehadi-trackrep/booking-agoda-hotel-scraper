@@ -55,25 +55,48 @@ from .models import Hotel, Bookmark
 from celery.result import AsyncResult
 
 
-# @login_required
-# def toggle_bookmark_view(request, hotel_id):
-#     if request.method == 'POST':
-#         hotel = get_object_or_404(Hotel, id=hotel_id)
-#         bookmark, created = Bookmark.objects.get_or_create(user=request.user, hotel=hotel)
+@login_required
+def toggle_bookmark_view(request, hotel_id):
+    if request.method == 'POST':
+        hotel = get_object_or_404(Hotel, id=hotel_id)
+        bookmark, created = Bookmark.objects.get_or_create(user=request.user, hotel=hotel)
         
-#         if not created:
-#             # If bookmark already existed, remove it
-#             bookmark.delete()
-#             return JsonResponse({'status': 'removed'})
-#         else:
-#             # If it was just created
-#             return JsonResponse({'status': 'added'})
-#     return JsonResponse({'status': 'error', 'message': 'Invalid request'}, status=400)
+        if not created:
+            # If bookmark already existed, remove it
+            bookmark.delete()
+            return JsonResponse({'status': 'removed'})
+        else:
+            # If it was just created
+            return JsonResponse({'status': 'added'})
+    return JsonResponse({'status': 'error', 'message': 'Invalid request'}, status=400)
 
-# @login_required
-# def bookmark_list_view(request):
-#     bookmarks = Bookmark.objects.filter(user=request.user).select_related('hotel')
-#     return render(request, 'hotels/bookmarks.html', {'bookmarks': bookmarks})
+@login_required
+def bookmark_list_view(request):
+    """
+    View to display all hotels bookmarked by the current user.
+    """
+    user_bookmarks = Bookmark.objects.filter(user=request.user).select_related('hotel').order_by('-created_at')
+    
+    bookmarked_hotels = []
+    for bookmark in user_bookmarks:
+        h = bookmark.hotel
+        bookmarked_hotels.append({
+            'id': h.id,
+            'name': h.name,
+            'location': h.location,
+            'price': h.price,
+            'rating': h.rating,
+            'image_url': h.image_url,
+            'hotel_url': h.hotel_url,
+            'source': h.source,
+            'is_bookmarked': True
+        })
+    
+    context = {
+        'bookmarked_hotels': bookmarked_hotels
+    }
+    return render(request, 'hotels/bookmarks.html', context)
+
 
 import asyncio
 from .city_id_resolver import get_agoda_city_id

@@ -1,30 +1,137 @@
-{% extends "base.html" %}
-{% block title %}My Bookmarks{% endblock %}
+{% extends 'base.html' %} {# Assuming you have a base.html for common layout #}
+{% load static %}
+
+{% block title %}My Bookmarked Hotels{% endblock %}
 
 {% block content %}
-<div class="bg-white p-8 rounded-lg shadow-md">
-    <h2 class="text-2xl font-bold mb-6">My Bookmarked Hotels</h2>
-    {% if bookmarks %}
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {% for bookmark in bookmarks %}
-                <div class="bg-white rounded-lg shadow-md overflow-hidden">
-                    <img src="{{ bookmark.hotel.image_url|default:'[https://placehold.co/600x400/e2e8f0/64748b?text=No+Image](https://placehold.co/600x400/e2e8f0/64748b?text=No+Image)' }}" alt="Image of {{ bookmark.hotel.name }}" class="w-full h-56 object-cover">
+<div class="container mx-auto p-6 bg-gray-50 min-h-screen">
+    <h1 class="text-4xl font-extrabold text-gray-900 mb-8 text-center">My Bookmarked Hotels</h1>
+
+    <div id="bookmarked-results-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+        {% if bookmarked_hotels %}
+            {% for hotel in bookmarked_hotels %}
+                <div class="bg-white rounded-lg shadow-xl overflow-hidden transform transition duration-300 hover:scale-105 hover:shadow-2xl" data-hotel-id="{{ hotel.id }}">
+                    <img class="hotel-image w-full h-48 object-cover" src="{{ hotel.image_url|default:'https://placehold.co/600x400/E0F2F7/000000?text=No+Image' }}" alt="{{ hotel.name }}">
                     <div class="p-6">
-                        <h2 class="text-xl font-bold text-gray-800 mb-2">{{ bookmark.hotel.name }}</h2>
-                        <p class="text-sm text-gray-500 mb-2">{{ bookmark.hotel.source }}</p>
-                        <p class="text-gray-600 mb-4">{{ bookmark.hotel.location }}</p>
+                        <h2 class="hotel-name text-2xl font-bold text-gray-800 mb-2">{{ hotel.name }}</h2>
+                        <p class="text-gray-600 mb-2">
+                            <i class="fas fa-map-marker-alt mr-2 text-blue-500"></i><span class="hotel-location">{{ hotel.location }}</span>
+                        </p>
+                        <p class="text-gray-700 font-semibold text-lg mb-2">
+                            Price: <span class="hotel-price text-green-600">{{ hotel.price|default:"N/A" }}</span>
+                        </p>
+                        <p class="text-gray-700 mb-2">
+                            Rating: <span class="hotel-rating text-yellow-500">{{ hotel.rating|default:"N/A" }}</span>
+                        </p>
+                        <p class="text-gray-500 text-sm mb-4">Source: <span class="hotel-source">{{ hotel.source }}</span></p>
+                        
                         <div class="flex justify-between items-center">
-                            <span class="text-lg font-semibold text-blue-600">{{ bookmark.hotel.price }}</span>
-                            <span class="bg-green-500 text-white text-sm font-bold px-3 py-1 rounded-full">{{ bookmark.hotel.rating }}</span>
+                            <a class="hotel-url inline-block bg-blue-600 text-white font-bold py-2 px-4 rounded-full 
+                                      hover:bg-blue-700 transition duration-300 ease-in-out text-center" 
+                               href="{{ hotel.hotel_url|default:'#' }}" target="_blank" rel="noopener noreferrer">
+                                View Hotel
+                            </a>
+                            <button class="bookmark-btn p-2 rounded-full hover:bg-gray-100 focus:outline-none"
+                                    data-hotel-id="{{ hotel.id }}">
+                                <svg class="w-6 h-6 text-red-500 transition-colors duration-200" 
+                                     xmlns="http://www.w3.org/2000/svg" 
+                                     viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" 
+                                     fill="currentColor" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path>
+                                </svg>
+                            </button>
                         </div>
-                         <a href="{{ bookmark.hotel.hotel_url }}" target="_blank" class="block text-center bg-gray-200 text-gray-800 mt-4 px-4 py-2 rounded-lg hover:bg-gray-300">View Deal</a>
                     </div>
                 </div>
             {% endfor %}
-        </div>
-    {% else %}
-        <p class="text-gray-500">You haven't bookmarked any hotels yet.</p>
-    {% endif %}
+        {% else %}
+            <div class="text-center py-10 w-full">
+                <p class="text-xl text-gray-700 mb-4">You haven't bookmarked any hotels yet.</p>
+                <p class="text-gray-500">Start searching for hotels on the <a href="{% url 'search_hotels' %}" class="text-blue-600 hover:underline">search page</a>.</p>
+            </div>
+        {% endif %}
+    </div>
 </div>
-{% endblock %}
 
+{# Font Awesome for icons #}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
+
+{% block extra_js %}
+<script>
+    // Get CSRF token from Django's cookie
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+    const csrfToken = getCookie('csrftoken');
+
+    function toggleBookmark(hotelId, iconElement, csrfToken) {
+        fetch(`/hotels/bookmark/toggle/${hotelId}/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': csrfToken,
+                'Content-Type': 'application/json'
+            },
+        })
+        .then(response => {
+            if (!response.ok) {
+                if (response.status === 403) {
+                    alert('Please log in to bookmark hotels.');
+                    window.location.href = '/login/';
+                }
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data.status === 'added') {
+                iconElement.classList.add('text-red-500');
+                iconElement.setAttribute('fill', 'currentColor');
+            } else if (data.status === 'removed') {
+                iconElement.classList.remove('text-red-500');
+                iconElement.setAttribute('fill', 'none');
+                // Optional: If on bookmarks page, remove the card when unbookmarked
+                const cardToRemove = document.querySelector(`[data-hotel-id="${hotelId}"]`);
+                if (cardToRemove) {
+                    cardToRemove.remove();
+                    // If no more bookmarks, show the "no bookmarks" message
+                    if (document.querySelectorAll('#bookmarked-results-container > div').length === 0) {
+                        const noBookmarksMessage = document.createElement('div');
+                        noBookmarksMessage.className = "text-center py-10 w-full";
+                        noBookmarksMessage.innerHTML = `<p class="text-xl text-gray-700 mb-4">You haven't bookmarked any hotels yet.</p><p class="text-gray-500">Start searching for hotels on the <a href="{% url 'search_hotels' %}" class="text-blue-600 hover:underline">search page</a>.</p>`;
+                        document.getElementById('bookmarked-results-container').appendChild(noBookmarksMessage);
+                    }
+                }
+            }
+        })
+        .catch(error => {
+            console.error('Error toggling bookmark:', error);
+            alert('Failed to toggle bookmark. Please try again.');
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        // Attach event listeners to bookmark buttons on the bookmarks page
+        const bookmarkBtns = document.querySelectorAll('#bookmarked-results-container .bookmark-btn');
+        bookmarkBtns.forEach(btn => {
+            if (csrfToken) { // Only attach if user is potentially authenticated
+                const hotelId = btn.dataset.hotelId;
+                const bookmarkIcon = btn.querySelector('svg');
+                btn.addEventListener('click', () => toggleBookmark(hotelId, bookmarkIcon, csrfToken));
+            } else {
+                btn.style.display = 'none'; // Hide bookmark button if not authenticated
+            }
+        });
+    });
+</script>
+{% endblock %}
