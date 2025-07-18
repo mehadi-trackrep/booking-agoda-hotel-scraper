@@ -75,6 +75,8 @@ from celery.result import AsyncResult
 #     bookmarks = Bookmark.objects.filter(user=request.user).select_related('hotel')
 #     return render(request, 'hotels/bookmarks.html', {'bookmarks': bookmarks})
 
+import asyncio
+from .city_id_resolver import get_agoda_city_id
 
 def search_hotels_view(request):
     """
@@ -86,9 +88,18 @@ def search_hotels_view(request):
         price = request.POST.get('price')
         rating = request.POST.get('rating')
 
-        if city and price and rating:
-            # Call the Celery task asynchronously
-            task_result = run_spiders_for_query.delay(city, price, rating)
+        if city:
+            # Resolve Agoda city ID asynchronously
+            agoda_city_id = None
+            try:
+                agoda_city_id = asyncio.run(get_agoda_city_id(city))
+                if not agoda_city_id:
+                    LOGGER.warning(f"Could not resolve Agoda city ID for {city}. Proceeding without Agoda search.")
+            except Exception as e:
+                LOGGER.error(f"Error resolving Agoda city ID for {city}: {e}")
+
+            # Call the Celery task asynchronously, passing the resolved Agoda city ID
+            task_result = run_spiders_for_query.delay(city, price=price, rating=rating, agoda_city_id=agoda_city_id)
             
             # Redirect to the results page, passing the group task_id
             return redirect('hotel_results', task_id=task_result.id)
@@ -124,14 +135,28 @@ def hotel_results_view(request, task_id=None): # <--- Make task_id optional
 def poll_search_results(request, task_id):
     """
     API endpoint to be polled by JavaScript.
-    Returns the task status and any results found so far, allowing for real-time updates.
+    Returns the task status and the best-priced hotels found so far.
     """
     LOGGER.info(f"Polling for task_id: {task_id}")
     task = AsyncResult(str(task_id))
 
     # Always query for hotels found so far for this task.
-    hotels_queryset = Hotel.objects.filter(search_task_id=str(task_id)).distinct().order_by('-scraped_at')
-    
+    hotels_queryset = Hotel.objects.filter(search_task_id=str(task_id)).distinct()
+
+    # Group hotels by name and location to find the best price
+    best_priced_hotels = {}
+    for hotel in hotels_queryset:
+        # Create a unique key for each hotel based on its name and location
+        hotel_key = (hotel.name, hotel.location)
+        
+        # If we haven't seen this hotel before, or if the current hotel has a lower price,
+        # update the dictionary with the current hotel's data.
+        if hotel_key not in best_priced_hotels or hotel.price < best_priced_hotels[hotel_key].price:
+            best_priced_hotels[hotel_key] = hotel
+
+    # Sort the best-priced hotels by their scraped time
+    sorted_hotels = sorted(best_priced_hotels.values(), key=lambda h: h.scraped_at, reverse=True)
+
     bookmarked_hotel_ids = []
     if request.user.is_authenticated:
         bookmarked_hotel_ids = list(Bookmark.objects.filter(user=request.user).values_list('hotel_id', flat=True))
@@ -140,9 +165,9 @@ def poll_search_results(request, task_id):
         'id': h.id, 'name': h.name, 'location': h.location, 'price': h.price,
         'rating': h.rating, 'image_url': h.image_url, 'hotel_url': h.hotel_url,
         'source': h.source, 'is_bookmarked': h.id in bookmarked_hotel_ids
-    } for h in hotels_queryset]
+    } for h in sorted_hotels]
     
-    LOGGER.info(f"Found {len(hotels_data)} hotels in DB for task {task_id}. Task status: {task.status}")
+    LOGGER.info(f"Found {len(hotels_data)} best-priced hotels in DB for task {task_id}. Task status: {task.status}")
 
     error_message = None
     # Check for failures specifically.

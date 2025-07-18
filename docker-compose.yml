@@ -14,26 +14,17 @@ services:
   django:
     build: ./django-project
     container_name: hotel_search
-    command: uv run python manage.py runserver 127.0.0.1:8000 #0.0.0.0:8000
+    command: python manage.py runserver 0.0.0.0:8000
     volumes:
       - .:/app
     ports:
       - "8000:8000"
     environment:
-      - DJANGO_SETTINGS_MODULE=hotel_search.settings
+      - DJANGO_SETTINGS_MODULE=django_project.settings
       - PYTHONUNBUFFERED=1
-      - FASTAPI_URL=http://127.0.0.1:8001
     depends_on:
       - db
-      - fastapi
-
-  fastapi:
-    build: ./fastapi-scraper
-    container_name: fastapi_scraper
-    volumes:
-      - ./fastapi_scraper:/app
-    ports:
-      - "8001:8001"
+      - redis
 
   redis:
     image: redis:7
@@ -41,12 +32,12 @@ services:
     ports:
       - "6379:6379"
 
-  celery_worker: # async workload queue for offloading
-    build: ./fastapi_scraper
-    command: celery -A app.celery_app worker --loglevel=info
+  celery_worker:
+    build: ./django-project
+    command: celery -A django_project worker --loglevel=info
     depends_on:
       - redis
-      - fastapi
+      - db
     volumes:
       - .:/app
 

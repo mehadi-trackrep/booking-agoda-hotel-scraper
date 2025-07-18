@@ -4,6 +4,8 @@ import subprocess
 import os
 from django.conf import settings
 from pathlib import Path
+from datetime import datetime
+
 
 # @shared_task(bind=True)
 # def individual_spider_task(self, spider_name, city, price=None, rating=None):
@@ -92,15 +94,14 @@ from pathlib import Path
 #         return {'task_id': individual_task_id, 'status': 'FAILURE', 'error': error_msg} # Return failure
 
 @shared_task(bind=True)
-def individual_spider_task(self, spider_name, city, price=None, rating=None):
+def individual_spider_task(self, spider_name, city, price=None, rating=None, checkin=None, agoda_city_id=None):
     """
     A Celery task to run a single Scrapy spider with arguments.
     It now passes the GROUP task ID (self.request.root_id) to the spider.
     """
-    # Get the ID of the individual task (for subprocess command)
-    individual_task_id = self.request.id
-    # Get the ID of the group task (root task)
-    group_task_id = self.request.root_id # <--- THIS IS THE KEY CHANGE
+
+    individual_task_id = self.request.id # Get the ID of the individual task (for subprocess command)
+    group_task_id = self.request.root_id # Get the ID of the group task (root task)
 
     scraper_project_path = Path(settings.BASE_DIR).parent / 'scraper'
 
@@ -119,9 +120,7 @@ def individual_spider_task(self, spider_name, city, price=None, rating=None):
     command = [
         'scrapy', 'crawl', spider_name,
         '-a', f'city={city}',
-        # Pass the GROUP task ID to the spider as 'search_task_id'
-        '-a', f'search_task_id={group_task_id}',
-        # You can still pass the individual task ID if your spider needs it for internal logging
+        '-a', f'search_task_id={group_task_id}', # Pass the GROUP task ID to the spider as 'search_task_id'
         '-a', f'individual_task_id={individual_task_id}' 
     ]
 
@@ -129,6 +128,10 @@ def individual_spider_task(self, spider_name, city, price=None, rating=None):
         command.extend(['-a', f'price={price}'])
     if rating:
         command.extend(['-a', f'rating={rating}'])
+    if checkin:
+        command.extend(['-a', f'checkin={checkin}'])
+    if agoda_city_id:
+        command.extend(['-a', f'agoda_city_id={agoda_city_id}'])
 
     print(f"Executing command for {spider_name}: {' '.join(command)} in {scraper_project_path}")
 
@@ -179,16 +182,20 @@ def individual_spider_task(self, spider_name, city, price=None, rating=None):
 
 
 @shared_task
-def run_spiders_for_query(city, price=None, rating=None):
+def run_spiders_for_query(city,  price=None, rating=None, agoda_city_id=None):
     """
     Creates a group of Celery tasks to run all spiders for a given search query.
     """
-    print(f"Initiating spider group for city: {city}, price: {price}, rating: {rating}")
+    print(f"Initiating spider group for city: {city}")
+    current_datetime = datetime.now()
+    # Format the date as YYYY-MM-DD
+    formatted_date = current_datetime.strftime("%Y-%m-%d")
     
-    booking_signature = individual_spider_task.s('booking_spider', city, price, rating)
-    # agoda_signature = individual_spider_task.s('agoda_spider', city, price, rating)
+    booking_signature = individual_spider_task.s('booking_spider', city, price=price, rating=rating, checkin=formatted_date)
+    agoda_signature = individual_spider_task.s('agoda_spider', city, price=price, rating=rating, checkin=formatted_date, agoda_city_id=agoda_city_id)
 
-    task_group = group(booking_signature, )
+    task_group = group(booking_signature, agoda_signature)
+    # task_group = group(agoda_signature, )
     
     result = task_group.apply_async()
     
