@@ -37,8 +37,8 @@ class BookingSpider(scrapy.Spider):
                 #         PageMethod("wait_for_selector", 'div[data-testid="property-card"]'),
                 #     ],
                 # },
-                # callback=self.parse,
-                callback=self.parse_with_mock_data,
+                callback=self.parse,
+                # callback=self.parse_with_mock_data,
             )
 
     def parse_with_mock_data(self, response):
