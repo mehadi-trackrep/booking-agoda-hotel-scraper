@@ -107,7 +107,7 @@ function updateHotelsGrid(hotels, hotelsGrid, cardTemplate, csrfToken) {
 }
 
 function toggleBookmark(hotelId, iconElement, csrfToken) {
-    fetch(`/bookmark/toggle/${hotelId}/`, {
+    fetch(`/hotels/bookmark/toggle/${hotelId}/`, {
         method: 'POST',
         headers: {
             'X-CSRFToken': csrfToken,
