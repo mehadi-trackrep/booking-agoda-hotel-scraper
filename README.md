@@ -1,7 +1,27 @@
 It is an simple but highly effective hotel search web app which fetches the hotel info from booking.com and agoda based on user input and shows the best matches.
-Tech stacks - Django, FastApi, Requests, Scrapy.
+Tech stacks - Django, Requests, Scrapy, Celery, Redis broker.
 
 ### ER diagram public link - https://dbdiagram.io/d/hotel_search_erd-687128b4f413ba3508757786
+
+
+### Installation 🛠️
+* Install uv
+```
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+* Create virtual env
+```
+uv venv
+```
+* Install dependencies from uv.lock file
+```
+uv sync
+```
+* 
+
+
+
+### dd
 
 * sudo docker-compose up db --build -d [only for database]
 * sudo docker-compose exec db psql -U hotel_user -d hotel_db
